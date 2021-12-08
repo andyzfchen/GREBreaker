@@ -4,7 +4,7 @@ import re
 from ast import literal_eval
 
 #import transformers
-from transformers import BertModel, BertTokenizer, BertForMaskedLM  #, AdamW, get_linear_schedule_with_warmup
+from transformers import BertModel, BertTokenizer, BertForMaskedLM, AdamW, get_linear_schedule_with_warmup
 import torch
 
 from sklearn.model_selection import train_test_split
@@ -86,6 +86,7 @@ class TestTaker(object):
   def set_glove_embedding(self, d_dim=50):
     assert d_dim in [ 50, 100, 200, 300 ]
 
+    self.d_dim = d_dim
     filenameGlove = "glove.6B."+str(d_dim)+"d"
     gloveEmbedding = { "<PAD>": np.zeros(200), "UNKA": np.random.rand(200) }
     self.gloveEmbeddingIdx = { "<PAD>": 0, "UNKA": 1 }
@@ -200,57 +201,167 @@ class TestTaker(object):
       return None
 
     return chosen_choice
- 
 
-  def train(self, nn=None):
-    print("Running training set.")
-    if nn is None:
-      nn = self.n_train
+
+  '''
+  def create_data_loader(self, df, tokenizer, max_len, batch_size):
+    ds = GPReviewDataset(
+      reviews=df.content.to_numpy(),
+      targets=df.sentiment.to_numpy(),
+      tokenizer=tokenizer,
+      max_len=max_len
+    )
+
+    return DataLoader(
+      ds,
+      batch_size=batch_size,
+      num_workers=4
+    )
+  '''
+
+
+  def init_train(self, n_epoch=10, max_len=160, batch_size=16):
+    print("Initializing training process.")
+
+    self.n_epoch = n_epoch
+    self.max_len = max_len
+    self.batch_size = batch_size
+
+    self.optimizer = AdamW(self.model.parameters(), lr=2e-5, correct_bias=False)
+    #self.loss_fn = nn.CrossEntropyLoss().to(self.device)
+    self.loss_fn = nn.MSELoss().to(self.device)
+
+    print()
+
+
+  def train(self, n_train=None):
+    print("Training model on training dataset.")
+    self.model.train()
+
+    if n_train is None:
+      n_train = self.n_train
 
     n_correct = 0
     n_invalid = 0
 
+    n_bert_vocab = self.tokenizer.vocab_size
+    print(n_bert_vocab)
+
+    print("Constructing BERT to GLoVe matrix.")
+    self.glove_to_bert = torch.zeros(n_bert_vocab, self.nGloveEmbeddingDim)
+    for ii in range(n_bert_vocab):
+      bert_word = self.tokenizer.convert_ids_to_tokens(ii)
+      #print(bert_word)
+      try:
+        glove_word_idx = torch.tensor(self.gloveEmbeddingIdx[bert_word.lower()]).int()
+      except:
+        #print(bert_word, "not found.")
+        continue
+
+      #print(glove_word_idx)
+      glove_word_embedding = self.wordEmbedding(glove_word_idx)
+      self.glove_to_bert[ii,:] = glove_word_embedding
+
+
+    print("Evaluating and updating BERT.")
     for ii, idx in enumerate(self.df_train.index):
-      chosen_choice = self.evaluate_sentence(self.df_train, idx)
+      text = self.df_train["question"][idx]
+      answer = literal_eval(self.df_train[self.df_train["ans"][idx]+")"][idx])[0][-1]
+      print(text)
+      print(answer)
+      answer_glove_embedding = self.wordEmbedding(torch.tensor(self.gloveEmbeddingIdx[answer.lower()]).int())
+      answer_bert_embedding = torch.nn.functional.softmax(torch.matmul(self.glove_to_bert, answer_glove_embedding), dim=-1)
+      print("answer_glove_embedding:", answer_glove_embedding.size())
+      print("answer_bert_embedding:", answer_bert_embedding.size())
+
+      # Tokenize input
+      text = "[CLS] %s [SEP]"%text
+      tokenized_text = self.tokenizer.tokenize(text)
+      masked_index = tokenized_text.index("[MASK]")
+      indexed_tokens = self.tokenizer.convert_tokens_to_ids(tokenized_text)
+      tokens_tensor = torch.tensor([indexed_tokens])
+      tokens_tensor = tokens_tensor.to(self.device)
+
+      # Predict all tokens
+      outputs = self.model(tokens_tensor)
+      predictions = outputs[0]
+      prediction_bert_embedding = torch.nn.functional.softmax(predictions[0, masked_index], dim=-1)
+      print("prediction_bert_embedding:", prediction_bert_embedding.size())
+
+      #loss = self.loss_fn(prediction_bert_embedding.view(-1, n_bert_vocab), answer_bert_embedding.view(-1, n_bert_vocab))
+      print("loss")
+      loss = self.loss_fn(prediction_bert_embedding, answer_bert_embedding)
+      print("optimizer zero grad")
+      self.optimizer.zero_grad()
+      print("loss backwards")
+      loss.backward()
+      print("clip grad norm")
+      nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+      print("optimizer step")
+      self.optimizer.step()
+
+      if ii >= n_train:
+        break
+
+      if (ii+1)%10 == 0:
+        print("Training step ", ii+1, " of ", n_train)
+
+    print("Finished training.")
+
+    
+
+  def validate(self, n_val=None):
+    print("Running model on validation dataset.")
+    self.model.eval()
+
+    if n_val is None:
+      n_val = self.n_val
+
+    n_correct = 0
+    n_invalid = 0
+
+    for ii, idx in enumerate(self.df_val.index):
+      chosen_choice = self.evaluate_sentence(self.df_val, idx)
       if chosen_choice is None:
         n_invalid += 1
-      elif chosen_choice[0] == self.df_train["ans"][idx]:
-        #print("Correct!")
+      elif chosen_choice[0] == self.df_val["ans"][idx]:
         n_correct += 1
-      #else:
-        #print("Wrong!")
-
-      #print()
-      #print()
 
       if (ii+1)%100 == 0:
-        print("Processed ", ii+1, " rows of ", self.n_train, ".")
+        print("Processed ", ii+1, " rows of ", self.n_val, ".")
 
-      if ii >= nn:
+      if ii >= n_val:
         break
 
     print("Number of sentences with invalid choices: ", n_invalid)
-    print("Accuracy: ", n_correct, "/", nn-n_invalid, "=", n_correct/(nn-n_invalid))
-    
+    print("Accuracy: ", n_correct, "/", n_test-n_invalid, "=", n_correct/(n_test-n_invalid))
 
-  def validate(self, nn=None):
+
+  def test(self, n_test=None):
+    print("Running model on testing dataset.")
+    self.model.eval()
+
     if nn is None:
-      nn = self.n_train
+      n_test = self.n_test
 
-    for ii, idx in enumerate(self.df_val.index):
-      self.evaluate_sentence(self.df_val, idx)
-      if ii >= nn:
-        break
-
-
-  def test(self, nn=None):
-    if nn is None:
-      nn = self.n_test
+    n_correct = 0
+    n_invalid = 0
 
     for ii, idx in enumerate(self.df_test.index):
-      self.evaluate_sentence(self.df_test, idx)
-      if ii >= nn:
+      chosen_choice = self.evaluate_sentence(self.df_test, idx)
+      if chosen_choice is None:
+        n_invalid += 1
+      elif chosen_choice[0] == self.df_test["ans"][idx]:
+        n_correct += 1
+
+      if (ii+1)%100 == 0:
+        print("Processed ", ii+1, " rows of ", self.n_test, ".")
+
+      if ii >= n_test:
         break
+
+    print("Number of sentences with invalid choices: ", n_invalid)
+    print("Accuracy: ", n_correct, "/", n_test-n_invalid, "=", n_correct/(n_test-n_invalid))
 
 
 
