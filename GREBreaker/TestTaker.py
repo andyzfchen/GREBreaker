@@ -47,8 +47,8 @@ class TestTaker(object):
     print("Val size: ", self.n_val)
     print("Test size: ", self.n_test)
 
-    #self.n_train = self.n_train + self.n_val + self.n_test
-    #self.df_train = df
+    self.n_test = self.n_train + self.n_val + self.n_test
+    self.df_test = df
 
     print()
 
@@ -231,7 +231,38 @@ class TestTaker(object):
     #self.loss_fn = nn.CrossEntropyLoss().to(self.device)
     self.loss_fn = nn.MSELoss().to(self.device)
 
+    print("Constructing BERT to GLoVe matrix.")
+    n_bert_vocab = self.tokenizer.vocab_size
+    print(n_bert_vocab)
+
+    self.glove_to_bert = torch.zeros(n_bert_vocab, self.nGloveEmbeddingDim).to(self.device)
+    for ii in range(n_bert_vocab):
+      bert_word = self.tokenizer.convert_ids_to_tokens(ii)
+      #print(bert_word)
+      try:
+        glove_word_idx = torch.tensor(self.gloveEmbeddingIdx[bert_word.lower()]).int()
+      except:
+        #print(bert_word, "not found.")
+        continue
+
+      #print(glove_word_idx)
+      glove_word_embedding = self.wordEmbedding(glove_word_idx)
+      self.glove_to_bert[ii,:] = glove_word_embedding.to(self.device)
+
     print()
+
+
+  def MSECosLoss(self, output, target):
+    cos_loss = torch.sum(output*target, dim=-1) / (torch.linalg.vector_norm(output)*torch.linalg.vector_norm(target))
+    print("cos_loss:", cos_loss)
+    try:
+      ones = torch.ones(cos_loss.size()[-1])
+    except:
+      ones = torch.ones(1)
+    print("ones:", ones)
+    loss = torch.mean((cos_loss - ones)**2)
+    print("loss:", loss)
+    return loss
 
 
   def train(self, n_train=None):
@@ -244,33 +275,14 @@ class TestTaker(object):
     n_correct = 0
     n_invalid = 0
 
-    n_bert_vocab = self.tokenizer.vocab_size
-    print(n_bert_vocab)
-
-    print("Constructing BERT to GLoVe matrix.")
-    self.glove_to_bert = torch.zeros(n_bert_vocab, self.nGloveEmbeddingDim)
-    for ii in range(n_bert_vocab):
-      bert_word = self.tokenizer.convert_ids_to_tokens(ii)
-      #print(bert_word)
-      try:
-        glove_word_idx = torch.tensor(self.gloveEmbeddingIdx[bert_word.lower()]).int()
-      except:
-        #print(bert_word, "not found.")
-        continue
-
-      #print(glove_word_idx)
-      glove_word_embedding = self.wordEmbedding(glove_word_idx)
-      self.glove_to_bert[ii,:] = glove_word_embedding
-
-
     print("Evaluating and updating BERT.")
     for ii, idx in enumerate(self.df_train.index):
       text = self.df_train["question"][idx]
       answer = literal_eval(self.df_train[self.df_train["ans"][idx]+")"][idx])[0][-1]
       print(text)
       print(answer)
-      answer_glove_embedding = self.wordEmbedding(torch.tensor(self.gloveEmbeddingIdx[answer.lower()]).int())
-      answer_bert_embedding = torch.nn.functional.softmax(torch.matmul(self.glove_to_bert, answer_glove_embedding), dim=-1)
+      answer_glove_embedding = self.wordEmbedding(torch.tensor(self.gloveEmbeddingIdx[answer.lower()]).int()).to(self.device)
+      answer_bert_embedding = torch.nn.functional.softmax(torch.matmul(self.glove_to_bert, answer_glove_embedding), dim=-1).to(self.device)
       print("answer_glove_embedding:", answer_glove_embedding.size())
       print("answer_bert_embedding:", answer_bert_embedding.size())
 
@@ -284,13 +296,13 @@ class TestTaker(object):
 
       # Predict all tokens
       outputs = self.model(tokens_tensor)
-      predictions = outputs[0]
-      prediction_bert_embedding = torch.nn.functional.softmax(predictions[0, masked_index], dim=-1)
+      predictions = outputs[0].to(self.device)
+      prediction_bert_embedding = torch.nn.functional.softmax(predictions[0, masked_index], dim=-1).to(self.device)
       print("prediction_bert_embedding:", prediction_bert_embedding.size())
 
       #loss = self.loss_fn(prediction_bert_embedding.view(-1, n_bert_vocab), answer_bert_embedding.view(-1, n_bert_vocab))
       print("loss")
-      loss = self.loss_fn(prediction_bert_embedding, answer_bert_embedding)
+      loss = self.MSECosLoss(prediction_bert_embedding, answer_bert_embedding).to(self.device)
       print("optimizer zero grad")
       self.optimizer.zero_grad()
       print("loss backwards")
@@ -341,7 +353,7 @@ class TestTaker(object):
     print("Running model on testing dataset.")
     self.model.eval()
 
-    if nn is None:
+    if n_test is None:
       n_test = self.n_test
 
     n_correct = 0
