@@ -313,6 +313,7 @@ class TestTaker(object):
         loop.set_postfix(loss=loss.item())
 
       self.validate()
+      self.test()
 
     '''
     exit()
