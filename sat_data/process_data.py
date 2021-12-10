@@ -8,7 +8,7 @@ print(df.head())
 print(df.columns)
 print(df.shape)
 
-for n_blank in range(1,3):
+for n_blank in range(1,2):
   print("Making dataset with "+str(n_blank)+" blanks.")
 
   df1 = df[df["blanks"]==n_blank][["ans","question"]]
@@ -19,6 +19,7 @@ for n_blank in range(1,3):
   choice_c = []
   choice_d = []
   choice_e = []
+  sentences = []
 
   choice_names = [ "a)", "b)", "c)", "d)", "e)" ]
   choices = [ choice_a, choice_b, choice_c, choice_d, choice_e ]
@@ -39,8 +40,13 @@ for n_blank in range(1,3):
 
       choices[kk].append([ [re.search("[a-z]+", word)[0] for word in choice] for choice in temp_choice])
 
+      if df1["ans"][jj] == choice_names[kk][0]:
+        sentences.append(df[choice_names[kk]][jj])
+
   for kk in range(len(choices)):
     df1[choice_names[kk]] = choices[kk]
+
+  df1["sentence"] = sentences
 
   df1.reset_index(drop=True, inplace=True)
   print(df1.head())

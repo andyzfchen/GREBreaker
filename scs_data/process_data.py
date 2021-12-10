@@ -22,6 +22,7 @@ choice_b = []
 choice_c = []
 choice_d = []
 choice_e = []
+sentences = []
 
 column_names = [ "a)", "b)", "c)", "d)", "e)" ]
 choice_names = [ "a", "b", "c", "d", "e" ]
@@ -41,6 +42,7 @@ for jj in df1.index:
   question = " ".join(question)
   questions.append(question)
   
+  sentences.append(df1["a"][jj])
 
   answer = choice_names[np.where([word == "a" for word in choice_names_temp])[0][0]]
   answers.append(answer)
@@ -64,6 +66,7 @@ for jj in df1.index:
 data = {}
 data["ans"] = answers
 data["question"] = questions
+data["sentence"] = sentences
 for ii in range(len(choice_names)):
   data[column_names[ii]] = choices[ii]
 
