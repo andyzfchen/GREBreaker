@@ -20,6 +20,7 @@ class TestTaker(object):
     torch.manual_seed(self.RANDOM_SEED)
 
     self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    #self.device = torch.device("cpu")
     print("Device set: ", self.device, ".")
 
     if model_name is None:
@@ -28,7 +29,7 @@ class TestTaker(object):
       self.PRE_TRAINED_MODEL_NAME = model_name
 
     self.tokenizer = BertTokenizer.from_pretrained(self.PRE_TRAINED_MODEL_NAME)
-    self.model = BertForMaskedLM.from_pretrained(self.PRE_TRAINED_MODEL_NAME)
+    self.model = BertForMaskedLM.from_pretrained(self.PRE_TRAINED_MODEL_NAME).to(self.device)
     self.model.eval()
 
     print("Loading dataset from filepath: ", data_file_path)
@@ -253,12 +254,12 @@ class TestTaker(object):
 
 
   def MSECosLoss(self, output, target):
-    cos_loss = torch.sum(output*target, dim=-1) / (torch.linalg.vector_norm(output)*torch.linalg.vector_norm(target))
+    cos_loss = torch.sum(output*target, dim=-1) / (torch.linalg.vector_norm(output)*torch.linalg.vector_norm(target)).to(self.device)
     print("cos_loss:", cos_loss)
     try:
-      ones = torch.ones(cos_loss.size()[-1])
+      ones = torch.ones(cos_loss.size()[-1]).to(self.device)
     except:
-      ones = torch.ones(1)
+      ones = torch.ones(1).to(self.device)
     print("ones:", ones)
     loss = torch.mean((cos_loss - ones)**2)
     print("loss:", loss)
@@ -274,6 +275,22 @@ class TestTaker(object):
 
     n_correct = 0
     n_invalid = 0
+
+    print(self.df_train["question"])
+    print(list(self.df_train["question"]))
+
+    labels = []
+    for ii, idx in enumerate(self.df_train.index):
+      labels.append(re.sub("[MASK]", self.df_train[self.df_train["ans"][idx]+")"][idx], self.df_train["question"][idx]))
+    print(labels)
+
+    exit()
+
+    inputs = self.tokenizer(list(self.df_train["question"]), return_tensors='pt', max_length=50, truncation=True, padding='max_length')
+    #inputs['labels'] = 
+    print(inputs.keys())
+
+    exit()
 
     print("Evaluating and updating BERT.")
     for ii, idx in enumerate(self.df_train.index):
@@ -306,7 +323,7 @@ class TestTaker(object):
       print("optimizer zero grad")
       self.optimizer.zero_grad()
       print("loss backwards")
-      loss.backward()
+      loss.backward(retain_graph=True)
       print("clip grad norm")
       nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
       print("optimizer step")
