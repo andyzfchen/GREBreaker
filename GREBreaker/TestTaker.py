@@ -2,6 +2,8 @@ import numpy as np
 import pandas as pd
 import re
 from ast import literal_eval
+from GREDataset import GREDataset
+from tqdm import tqdm  # for our progress bar
 
 #import transformers
 from transformers import BertModel, BertTokenizer, BertForMaskedLM, AdamW, get_linear_schedule_with_warmup
@@ -10,7 +12,7 @@ import torch
 from sklearn.model_selection import train_test_split
 
 from torch import nn, optim
-#from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 import torch.nn.functional as F
 
 class TestTaker(object):
@@ -48,8 +50,8 @@ class TestTaker(object):
     print("Val size: ", self.n_val)
     print("Test size: ", self.n_test)
 
-    self.n_test = self.n_train + self.n_val + self.n_test
-    self.df_test = df
+    #self.n_test = self.n_train + self.n_val + self.n_test
+    #self.df_test = df
 
     print()
 
@@ -276,20 +278,43 @@ class TestTaker(object):
     n_correct = 0
     n_invalid = 0
 
-    print(self.df_train["question"])
-    print(list(self.df_train["question"]))
-
-    labels = []
-    for ii, idx in enumerate(self.df_train.index):
-      labels.append(re.sub("[MASK]", self.df_train[self.df_train["ans"][idx]+")"][idx], self.df_train["question"][idx]))
-    print(labels)
-
-    exit()
-
     inputs = self.tokenizer(list(self.df_train["question"]), return_tensors='pt', max_length=50, truncation=True, padding='max_length')
-    #inputs['labels'] = 
+    input_labels = self.tokenizer(list(self.df_train["sentence"]), return_tensors='pt', max_length=50, truncation=True, padding='max_length')
+    inputs["labels"] = input_labels.input_ids.detach().clone()
     print(inputs.keys())
 
+    dataset = GREDataset(inputs)
+    loader = DataLoader(dataset, batch_size=16, shuffle=True)
+
+
+    epochs = 5
+
+    for epoch in range(epochs):
+      # setup loop with TQDM and dataloader
+      loop = tqdm(loader, leave=True)
+      for batch in loop:
+        # initialize calculated gradients (from prev step)
+        self.optimizer.zero_grad()
+        # pull all tensor batches required for training
+        input_ids = batch['input_ids'].to(self.device)
+        attention_mask = batch['attention_mask'].to(self.device)
+        labels = batch['labels'].to(self.device)
+        # process
+        outputs = self.model(input_ids, attention_mask=attention_mask,
+                        labels=labels)
+        # extract loss
+        loss = outputs.loss
+        # calculate loss for every parameter that needs grad update
+        loss.backward()
+        # update parameters
+        self.optimizer.step()
+        # print relevant info to progress bar
+        loop.set_description(f'Epoch {epoch}')
+        loop.set_postfix(loss=loss.item())
+
+      self.validate()
+
+    '''
     exit()
 
     print("Evaluating and updating BERT.")
@@ -335,6 +360,7 @@ class TestTaker(object):
       if (ii+1)%10 == 0:
         print("Training step ", ii+1, " of ", n_train)
 
+    '''
     print("Finished training.")
 
     
@@ -363,7 +389,7 @@ class TestTaker(object):
         break
 
     print("Number of sentences with invalid choices: ", n_invalid)
-    print("Accuracy: ", n_correct, "/", n_test-n_invalid, "=", n_correct/(n_test-n_invalid))
+    print("Accuracy: ", n_correct, "/", n_val-n_invalid, "=", n_correct/(n_val-n_invalid))
 
 
   def test(self, n_test=None):

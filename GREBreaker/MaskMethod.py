@@ -14,15 +14,16 @@
 #
 from TestTaker import TestTaker
 
-DATA_FILE_PATH = "../sat_data/SAT_set_1blank.csv"
+#DATA_FILE_PATH = "../sat_data/SAT_set_1blank.csv"
 #DATA_FILE_PATH = "../scs_data/SCS_set_1blank.csv"
-#DATA_FILE_PATH = "../501sc_data/501sc_set_1blank.csv"
+DATA_FILE_PATH = "../501sc_data/501sc_set_1blank.csv"
 
 tt = TestTaker(DATA_FILE_PATH)
 tt.set_glove_embedding(50)
+tt.test()
 tt.init_train()
 tt.train()
-#tt.test()
+tt.test()
 
 
 '''
