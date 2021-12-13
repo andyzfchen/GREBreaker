@@ -14,15 +14,30 @@
 #
 from TestTaker import TestTaker
 
-DATA_FILE_PATH = "../sat_data/SAT_set_1blank.csv"
+data_files = [ 
+  "../sat_data/SAT_set_1blank.csv",
+  "../scs_data/SCS_set_1blank.csv",
+  "../501sc_data/501sc_set_1blank.csv",
+]
+
+glove_embedding_dims = [
+  50,
+  100,
+  200,
+  300,
+]
+
+#DATA_FILE_PATH = "../sat_data/SAT_set_1blank.csv"
 #DATA_FILE_PATH = "../scs_data/SCS_set_1blank.csv"
 #DATA_FILE_PATH = "../501sc_data/501sc_set_1blank.csv"
 
-tt = TestTaker(DATA_FILE_PATH)
-tt.set_glove_embedding(50)
-tt.test()
-tt.init_train()
-tt.train()
+for data_file in data_files:
+  for glove_embedding_dim in glove_embedding_dims:
+    tt = TestTaker(data_file)
+    tt.set_glove_embedding(glove_embedding_dim)
+    tt.test()
+    tt.init_train()
+    tt.train()
 
 
 '''
