@@ -13,11 +13,19 @@
 #import torch.nn.functional as F
 #
 from TestTaker import TestTaker
+import numpy as np
+import os
 
 data_files = [ 
   "../sat_data/SAT_set_1blank.csv",
   "../scs_data/SCS_set_1blank.csv",
   "../501sc_data/501sc_set_1blank.csv",
+]
+
+data_names = [
+  "SAT",
+  "SCS",
+  "501sc",
 ]
 
 glove_embedding_dims = [
@@ -31,13 +39,23 @@ glove_embedding_dims = [
 #DATA_FILE_PATH = "../scs_data/SCS_set_1blank.csv"
 #DATA_FILE_PATH = "../501sc_data/501sc_set_1blank.csv"
 
-for data_file in data_files:
+if not os.path.exists("../cache"):
+  os.mkdir("../cache")
+if not os.path.exists("../cache/word_prediction"):
+  os.mkdir("../cache/word_prediction")
+
+for ii, data_file in enumerate(data_files):
   for glove_embedding_dim in glove_embedding_dims:
     tt = TestTaker(data_file)
     tt.set_glove_embedding(glove_embedding_dim)
     tt.test()
     tt.init_train()
-    tt.train()
+    train_acc, val_acc = tt.train()
+
+    np.save("../cache/word_prediction/"+data_names[ii]+"_glove"+str(glove_embedding_dim)+"_train_acc.npy", train_acc)
+    np.save("../cache/word_prediction/"+data_names[ii]+"_glove"+str(glove_embedding_dim)+"_val_acc.npy", val_acc)
+
+    
 
 
 '''

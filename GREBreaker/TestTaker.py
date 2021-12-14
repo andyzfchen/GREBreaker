@@ -287,11 +287,15 @@ class TestTaker(object):
     loader = DataLoader(dataset, batch_size=16, shuffle=True)
 
 
-    epochs = 5
+    n_epoch = 5
+    train_acc = np.zeros(n_epoch)
+    val_acc = np.zeros(n_epoch)
 
-    for epoch in range(epochs):
+    for ii in range(n_epoch):
       # setup loop with TQDM and dataloader
       loop = tqdm(loader, leave=True)
+      train_acc[ii] = self.train_score()
+
       for batch in loop:
         # initialize calculated gradients (from prev step)
         self.optimizer.zero_grad()
@@ -309,11 +313,15 @@ class TestTaker(object):
         # update parameters
         self.optimizer.step()
         # print relevant info to progress bar
-        loop.set_description(f'Epoch {epoch}')
+        loop.set_description(f'Epoch {ii+1} of {n_epoch}')
         loop.set_postfix(loss=loss.item())
 
-      self.validate()
+
+      val_acc[ii] = self.validate()
       self.test()
+
+    print("Training Accuracies:", train_acc)
+    print("Validation Accuracies:", val_acc)
 
     '''
     exit()
@@ -364,7 +372,37 @@ class TestTaker(object):
     '''
     print("Finished training.")
 
+    return train_acc, val_acc
+
     
+  def train_score(self, n_train=None):
+    print("Running model on training dataset.")
+    self.model.eval()
+
+    if n_train is None:
+      n_train = self.n_train
+
+    n_correct = 0
+    n_invalid = 0
+
+    for ii, idx in enumerate(self.df_train.index):
+      chosen_choice = self.evaluate_sentence(self.df_train, idx)
+      if chosen_choice is None:
+        n_invalid += 1
+      elif chosen_choice[0] == self.df_train["ans"][idx]:
+        n_correct += 1
+
+      if (ii+1)%100 == 0:
+        print("Processed ", ii+1, " rows of ", self.n_train, ".")
+
+      if ii >= n_train:
+        break
+
+    print("Number of sentences with invalid choices: ", n_invalid)
+    print("Accuracy: ", n_correct, "/", n_train-n_invalid, "=", n_correct/(n_train-n_invalid))
+
+    return n_correct/(n_train-n_invalid)
+
 
   def validate(self, n_val=None):
     print("Running model on validation dataset.")
@@ -391,6 +429,8 @@ class TestTaker(object):
 
     print("Number of sentences with invalid choices: ", n_invalid)
     print("Accuracy: ", n_correct, "/", n_val-n_invalid, "=", n_correct/(n_val-n_invalid))
+
+    return n_correct/(n_val-n_invalid)
 
 
   def test(self, n_test=None):
