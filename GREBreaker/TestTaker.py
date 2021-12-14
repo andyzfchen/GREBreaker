@@ -288,13 +288,14 @@ class TestTaker(object):
 
 
     n_epoch = 5
-    train_acc = np.zeros(n_epoch)
-    val_acc = np.zeros(n_epoch)
+    train_acc = np.zeros(n_epoch+1)
+    val_acc = np.zeros(n_epoch+1)
 
     for ii in range(n_epoch):
       # setup loop with TQDM and dataloader
       loop = tqdm(loader, leave=True)
       train_acc[ii] = self.train_score()
+      val_acc[ii] = self.validate()
 
       for batch in loop:
         # initialize calculated gradients (from prev step)
@@ -317,8 +318,10 @@ class TestTaker(object):
         loop.set_postfix(loss=loss.item())
 
 
-      val_acc[ii] = self.validate()
       self.test()
+
+    train_acc[-1] = self.train_score()
+    val_acc[-1] = self.validate()
 
     print("Training Accuracies:", train_acc)
     print("Validation Accuracies:", val_acc)
