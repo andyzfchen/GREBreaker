@@ -1,4 +1,4 @@
-To train the model with default training set ('SCS_traing.csv'), learning rate equal to 2e-5, and save it as 'model.torch', run the following sample command:
+To train the model with default training set ('scs_traing.csv'), learning rate equal to 2e-5, and save it as 'model.torch', run the following sample command:
 
 `python run.py --train --lr 2e-5 --model 'model.torch'`
 
